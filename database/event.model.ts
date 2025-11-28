@@ -1,9 +1,6 @@
-import mongoose, { Schema, Types, Model } from "mongoose";
+import mongoose, { Schema, Model } from "mongoose";
 
-/**
- * Event domain model (document shape).
- * Strings are trimmed and validated; timestamps enabled.
- */
+
 export interface EventDocument extends mongoose.Document {
   title: string;
   slug: string;
@@ -12,9 +9,9 @@ export interface EventDocument extends mongoose.Document {
   image: string;
   venue: string;
   location: string;
-  date: string; // normalized YYYY-MM-DD
-  time: string; // normalized HH:mm (24h)
-  mode: string; // online | offline | hybrid (free-form but required)
+  date: string;
+  time: string;
+  mode: string;
   audience: string;
   agenda: string[];
   organizer: string;
@@ -150,9 +147,9 @@ eventSchema.index({ slug: 1 }, { unique: true, name: "unique_slug" });
  * - Normalize date to YYYY-MM-DD.
  * - Normalize time to HH:mm (24h).
  */
-eventSchema.pre("save", function (next) {
+eventSchema.pre("validate", function (next) {
   try {
-    if (this.isModified("title")) {
+    if (!this.slug && this.title) {
       this.slug = slugify(this.title);
     }
     if (this.isModified("date")) {
@@ -166,6 +163,7 @@ eventSchema.pre("save", function (next) {
     next(err as Error);
   }
 });
+
 
 // Avoid model recompilation in dev (HMR)
 export const Event: Model<EventDocument> =

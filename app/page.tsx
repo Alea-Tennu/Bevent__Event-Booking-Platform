@@ -1,8 +1,18 @@
-import EventCard from "@/components/EventCard"
-import ExploreBtn from "@/components/ExploreBtn"
-import events from "@/lib/constants"
+import EventCard from "@/components/EventCard";
+import ExploreBtn from "@/components/ExploreBtn";
+import { EventDocument } from "@/database/event.model";
+import { cacheLife } from "next/cache";
 
-const home = () => {
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
+
+const Page = async () => {
+  'use cache'
+  cacheLife('hours')
+  const response = await fetch(`${BASE_URL}/api/events`);
+  if (!response.ok) throw new Error("Failed to fetch events");
+
+  const { events} = await response.json();
+
   return (
     <section>
       <h1 className="text-center">The Hub for Every <br />Dev Event You Can&apos;t Miss</h1>
@@ -13,15 +23,15 @@ const home = () => {
       <div className="mt-20 space-y-7">
         <h3>Featured Events</h3>
         <ul className="events">
-          {events.map((event) => (
-            <li key={event.title}>
+          {events && events.length>0 && events.map((event : EventDocument) => (
+            <li key={event.title} className="list-none">
               <EventCard {...event}/>
             </li>
           ))}
         </ul>
       </div>
     </section>
-  )
-}
+  );
+};
 
-export default home
+export default Page;

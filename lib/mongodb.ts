@@ -1,75 +1,66 @@
-import mongoose, { Mongoose } from "mongoose";
+import mongoose from 'mongoose';
 
-/**
- * Small, typed cache used to avoid opening multiple MongoDB connections
- * during Next.js development where modules are hot-reloaded.
- */
+// Define the connection cache type
 type MongooseCache = {
-  conn: Mongoose | null;
-  promise: Promise<Mongoose> | null;
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
 };
 
+// Extend the global object to include our mongoose cache
 declare global {
   // eslint-disable-next-line no-var
-  var __mongooseCache: MongooseCache | undefined;
+  var mongoose: MongooseCache | undefined;
+}
+
+const MONGODB_URI = process.env.MONGODB_URI;
+
+
+// Initialize the cache on the global object to persist across hot reloads in development
+let cached: MongooseCache = global.mongoose || { conn: null, promise: null };
+
+if (!global.mongoose) {
+  global.mongoose = cached;
 }
 
 /**
- * Read the MongoDB connection string from env. Intentionally fail fast if it's missing
- * so misconfigurations are caught early in any environment (dev, preview, prod).
+ * Establishes a connection to MongoDB using Mongoose.
+ * Caches the connection to prevent multiple connections during development hot reloads.
+ * @returns Promise resolving to the Mongoose instance
  */
-const MONGODB_URI: string | undefined = process.env.MONGODB_URI;
-if (!MONGODB_URI) {
-  throw new Error(
-    "Missing environment variable: MONGODB_URI. Please set it in your .env file."
-  );
-}
-
-/**
- * Reuse the same cache across hot reloads in development.
- * In production, the module is evaluated once per serverless instance / process,
- * so this behaves like a simple module-level singleton.
- */
-const cached: MongooseCache =
-  globalThis.__mongooseCache ??
-  (globalThis.__mongooseCache = { conn: null, promise: null });
-
-/**
- * Establish (or reuse) a singleton Mongoose connection.
- * - Returns an existing connection if available.
- * - Otherwise, creates a single in-flight promise to connect once.
- */
-export async function connectToDatabase(): Promise<Mongoose> {
+async function connectDB(): Promise<typeof mongoose> {
+  // Return existing connection if available
   if (cached.conn) {
     return cached.conn;
   }
 
+  // Return existing connection promise if one is in progress
   if (!cached.promise) {
-    // bufferCommands=false ensures models fail fast if used before connection is ready
-    cached.promise = mongoose.connect(MONGODB_URI as string, {
-      bufferCommands: false,
-      // You can set dbName here if your URI doesn't include it:
-      // dbName: process.env.MONGODB_DB,
-      // Add more options as needed (e.g., serverSelectionTimeoutMS)
+    // Validate MongoDB URI exists
+    if (!MONGODB_URI) {
+      throw new Error(
+        'Please define the MONGODB_URI environment variable inside .env.local'
+      );
+    }
+    const options = {
+      bufferCommands: false, // Disable Mongoose buffering
+    };
+
+    // Create a new connection promise
+    cached.promise = mongoose.connect(MONGODB_URI!, options).then((mongoose) => {
+      return mongoose;
     });
   }
 
-  cached.conn = await cached.promise;
+  try {
+    // Wait for the connection to establish
+    cached.conn = await cached.promise;
+  } catch (error) {
+    // Reset promise on error to allow retry
+    cached.promise = null;
+    throw error;
+  }
+
   return cached.conn;
 }
 
-/**
- * Optional helper to close the connection in test environments.
- * Not typically used in serverless/edge production.
- */
-export async function disconnectFromDatabase(): Promise<void> {
-  if (cached.conn) {
-    await mongoose.disconnect();
-    cached.conn = null;
-    cached.promise = null;
-  }
-}
-
-export default connectToDatabase;
-
-
+export default connectDB;
